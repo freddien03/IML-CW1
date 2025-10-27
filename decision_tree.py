@@ -21,8 +21,8 @@ class Decision_Tree_Classifier:
         
         return tree.label
 
-        
-    def decision_tree_learning(self, data: np.array, depth: int):
+
+    def decision_tree_learning(self, data, depth):
         if len(np.unique(data[:,-1])) == 1:
             return (Leaf(data[:,-1][0]), depth)
         
