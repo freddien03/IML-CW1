@@ -2,7 +2,6 @@ from matplotlib.pylab import default_rng
 import numpy as np
 from decision_tree import Decision_Tree_Classifier
 
-
 from node import Node
 
 def predict_one(tree, x):
@@ -138,15 +137,39 @@ def train_test_k_fold(n_folds, n_instances, random_generator=default_rng()):
 
     return folds
 
-def cross_validation(n_folds, data, random_generator=default_rng()):
-    n_instances = data.shape[0]
-    accuracies = np.zeros(n_folds, dtype=float)
-    dt_classifier = Decision_Tree_Classifier()
+def cross_validation(n_folds, data, labels=None, seed=42):
+    rng = default_rng(seed)
+    folds = train_test_k_fold(n_folds, data.shape[0], rng)
+    if labels is None:
+        labels = np.array([1., 2., 3., 4.])
 
-    for i, (train_indices, test_indices) in enumerate(train_test_k_fold(n_folds, n_instances, random_generator)):
-        train_data = data[train_indices, :]
-        test_data = data[test_indices, :]
+    y_true_all = []
+    y_pred_all = []
+    fold_acc = np.zeros(n_folds, dtype=float)
 
-        # train decision tree
-        dt_classifier.fit(train_data)
-        # do shit with it
+    for i, (train_idx, test_idx) in enumerate(folds):
+        train, test = data[train_idx], data[test_idx]
+        clf = Decision_Tree_Classifier()
+        clf.fit(train)
+        X_test, y_test = test[:, :-1], test[:, -1]
+        y_pred = predict(clf.tree, X_test)
+
+        fold_acc[i] = np.mean(y_pred == y_test)
+        y_true_all.append(y_test)
+        y_pred_all.append(y_pred)
+
+    y_true_all = np.concatenate(y_true_all)
+    y_pred_all = np.concatenate(y_pred_all)
+
+    confusion = confusion_matrix(y_true_all, y_pred_all, class_labels=labels)
+    acc = float(np.trace(confusion) / confusion.sum())
+    p, macro_p = precision(y_true_all, y_pred_all, class_labels=labels)
+    r, macro_r = recall(y_true_all, y_pred_all, class_labels=labels)
+    f1, macro_f1 = f1_score(y_true_all, y_pred_all, class_labels=labels)
+
+    return {
+        "labels": labels, "confusion_matrix": confusion, "accuracy": acc,
+        "precision": p, "recall": r, "f1": f1,
+        "macro_precision": macro_p, "macro_recall": macro_r, "macro_f1": macro_f1,
+        "fold_accuracies": fold_acc,
+    }
