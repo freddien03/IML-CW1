@@ -4,3 +4,7 @@ class Node:
         self.val = val
         self.left = left
         self.right = right
+
+class Leaf:
+    def __init__(self, label):
+        self.label = label
