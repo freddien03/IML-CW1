@@ -6,21 +6,20 @@ noisy = np.loadtxt("wifi_db/noisy_dataset.txt")
 
 class Decision_Tree_Classifier:
 
-    def __init__(self, data=None):
-        self.data = data
-        if data is not None:
-            self.tree, self.depth = self.decision_tree_learning(data, 0)
+    def __init__(self):
         self.tree = None
 
-    def predict(self, data, tree):
-        while type(tree) is Node:
-            if data[tree.attr] > tree.val:
-                tree = tree.right
-            else:
-                tree = tree.left
-        
-        return tree.label
+    def fit(self, data):
+        self.tree, self.depth = self.decision_tree_learning(data, 0)
 
+    def predict(self, data):
+        return np.array([self.predict_one(x) for x in data])
+
+    def predict_one(self, x):
+        tree = self.tree
+        while isinstance(tree, Node):
+            tree = tree.right if x[tree.attr] > tree.val else tree.left
+        return tree.label
 
     def decision_tree_learning(self, data, depth):
         if len(np.unique(data[:,-1])) == 1:
