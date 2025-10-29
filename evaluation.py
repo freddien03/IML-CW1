@@ -1,175 +1,145 @@
-from matplotlib.pylab import default_rng
 import numpy as np
-from decision_tree import Decision_Tree_Classifier
-
+from numpy.random import default_rng
+from decision_tree import DecisionTreeClassifier
 from node import Node
 
-def predict_one(tree, x):
+def _predict_one(tree, x):
+    # traverses a trained tree to predict one sample 
+    # note: this is a helper function for predict
     while isinstance(tree, Node):
         tree = tree.right if x[tree.attr] > tree.val else tree.left
     return tree.label
 
 def predict(tree, X):
-    return np.array([predict_one(tree, x) for x in X])
+    # vectorised tree prediction over a matrix X
+    return np.array([_predict_one(tree, x) for x in X])
 
 def evaluate(test_db, trained_tree):
+    # evaluate accuracy of a trained tree on test data
     X, y = test_db[:, :-1], test_db[:, -1]
     y_hat = predict(trained_tree, X)
-    
     return float(np.mean(y_hat == y))
 
-def confusion_matrix(y_true, y_pred, class_labels=None):
-    if class_labels is None:
-        class_labels = np.unique(np.concatenate((y_true, y_pred)))
+def confusion_matrix(y_true, y_pred, labels=None):
+    # builds confusion matrix with a fixed label order
+    if labels is None:
+        labels = np.unique(np.concatenate((y_true, y_pred)))
 
-    C = len(class_labels)
-    confusion = np.zeros((C, C), dtype=int)
+    C = len(labels)
+    cm = np.zeros((C, C), dtype=int)
 
-    for i, label in enumerate(class_labels):
-        indices = (y_true == label)
-        preds = y_pred[indices]
-        unique_labels, counts = np.unique(preds, return_counts=True)
-        freq = dict(zip(unique_labels, counts))
-        for j, cl in enumerate(class_labels):
-            confusion[i, j] = freq.get(cl, 0)
+    for i, lab in enumerate(labels):
+        idx = (y_true == lab)
+        preds = y_pred[idx]
+        uniq, cnt = np.unique(preds, return_counts=True)
+        freq = dict(zip(uniq, cnt))
+        for j, lab_j in enumerate(labels):
+            cm[i, j] = freq.get(lab_j, 0)
 
-    return confusion
+    return cm
 
-def precision(y_true, y_pred, class_labels=None):
-    if class_labels is None:
-        class_labels = np.unique(np.concatenate((y_true, y_pred)))
-    
-    confusion = confusion_matrix(y_true, y_pred, class_labels=class_labels)
+def precision(y_true, y_pred, labels=None):
+    # calculates per-class precision and macro-average
+    if labels is None:
+        labels = np.unique(np.concatenate((y_true, y_pred)))
+    cm = confusion_matrix(y_true, y_pred, labels=labels)
 
-    C = confusion.shape[0]
-    p = np.zeros(C, dtype=float)
-    
+    C = cm.shape[0]
+    prec = np.zeros(C, dtype=float)
     for i in range(C):
-        tp = confusion[i, i]
-        fp = confusion[:, i].sum() - tp
+        tp = cm[i, i]
+        fp = cm[:, i].sum() - tp
         denom = tp + fp
-        p[i] = tp / denom if denom else 0.0
+        prec[i] = tp / denom if denom else 0.0
 
-    macro_p = float(np.mean(p)) if C else 0.0
-    return p, macro_p
+    macro_prec = float(np.mean(prec)) if C else 0.0
+    return prec, macro_prec
 
-def recall(y_true, y_pred, class_labels=None):
-    if class_labels is None:
-        class_labels = np.unique(np.concatenate((y_true, y_pred)))
-    
-    confusion = confusion_matrix(y_true, y_pred, class_labels=class_labels)
+def recall(y_true, y_pred, labels=None):
+    # calculates per-class recall and macro-average
+    if labels is None:
+        labels = np.unique(np.concatenate((y_true, y_pred)))
+    cm = confusion_matrix(y_true, y_pred, labels=labels)
 
-    C = confusion.shape[0]
-    r = np.zeros(C, dtype=float)
-    
+    C = cm.shape[0]
+    rec = np.zeros(C, dtype=float)
     for i in range(C):
-        tp = confusion[i, i]
-        fn = confusion[i, :].sum() - tp
+        tp = cm[i, i]
+        fn = cm[i, :].sum() - tp
         denom = tp + fn
-        r[i] = tp / denom if denom else 0.0
+        rec[i] = tp / denom if denom else 0.0
 
-    macro_r = float(np.mean(r)) if C else 0.0
-    return r, macro_r
+    macro_rec = float(np.mean(rec)) if C else 0.0
+    return rec, macro_rec
 
-def f1_score(y_true, y_pred, class_labels=None):
-    p, _ = precision(y_true, y_pred, class_labels)
-    r, _ = recall(y_true, y_pred, class_labels)
+def f1_score(y_true, y_pred, labels=None):
+    # calculates per-class F1 and macro-average
+    prec, _ = precision(y_true, y_pred, labels)
+    rec, _ = recall(y_true, y_pred, labels)
 
-    C = len(p)
+    C = len(prec)
     f1 = np.zeros(C, dtype=float)
     for i in range(C):
-        denom = p[i] + r[i]
-        f1[i] = 2 * p[i] * r[i] / denom if denom else 0.0
+        denom = prec[i] + rec[i]
+        f1[i] = 2 * prec[i] * rec[i] / denom if denom else 0.0
 
     macro_f1 = float(np.mean(f1)) if C else 0.0
     return f1, macro_f1
 
+def k_fold_split(n_splits, n_instances, rng=default_rng()):
+    # randomly splits indices [0..n_instances) into n_splits folds
+    shuffled = rng.permutation(n_instances)
+    return np.array_split(shuffled, n_splits)
 
-def k_fold_split(n_splits, n_instances, random_generator=default_rng()):
-    """ Split n_instances into n mutually exclusive splits at random.
-    
-    Args:
-        n_splits (int): Number of splits
-        n_instances (int): Number of instances to split
-        random_generator (np.random.Generator): A random generator
-
-    Returns:
-        list: a list (length n_splits). Each element in the list should contain a 
-            numpy array giving the indices of the instances in that split.
-    """
-
-    # generate a random permutation of indices from 0 to n_instances
-    shuffled_indices = random_generator.permutation(n_instances)
-
-    # split shuffled indices into almost equal sized splits
-    split_indices = np.array_split(shuffled_indices, n_splits)
-
-    return split_indices
-
-def train_test_k_fold(n_folds, n_instances, random_generator=default_rng()):
-    """ Generate train and test indices at each fold.
-    
-    Args:
-        n_folds (int): Number of folds
-        n_instances (int): Total number of instances
-        random_generator (np.random.Generator): A random generator
-
-    Returns:
-        list: a list of length n_folds. Each element in the list is a list (or tuple) 
-            with two elements: a numpy array containing the train indices, and another 
-            numpy array containing the test indices.
-    """
-
-    # split the dataset into k splits
-    split_indices = k_fold_split(n_folds, n_instances, random_generator)
-
+def train_test_k_fold(n_folds, n_instances, rng=default_rng()):
+    # yields train/test index arrays for each fold
+    splits = k_fold_split(n_folds, n_instances, rng)
     folds = []
     for k in range(n_folds):
-        # pick k as test
-        test_indices = split_indices[k]
-
-        # combine remaining splits as train
-        # this solution is fancy and worked for me
-        # feel free to use a more verbose solution that's more readable
-        train_indices = np.hstack(split_indices[:k] + split_indices[k+1:])
-
-        folds.append([train_indices, test_indices])
-
+        test_idx = splits[k]
+        train_idx = np.hstack(splits[:k] + splits[k+1:])
+        folds.append([train_idx, test_idx])
     return folds
 
-def cross_validation(n_folds, data, labels=None, seed=42):
+def cross_validation(n_folds, data, labels=None, seed=37):
+    # k-fold CV: train on each fold, collect metrics and confusion matrix
     rng = default_rng(seed)
     folds = train_test_k_fold(n_folds, data.shape[0], rng)
     if labels is None:
         labels = np.array([1., 2., 3., 4.])
 
-    y_true_all = []
-    y_pred_all = []
+    y_true_all, y_pred_all = [], []
     fold_acc = np.zeros(n_folds, dtype=float)
 
     for i, (train_idx, test_idx) in enumerate(folds):
         train, test = data[train_idx], data[test_idx]
-        clf = Decision_Tree_Classifier()
+        clf = DecisionTreeClassifier()
         clf.fit(train)
         X_test, y_test = test[:, :-1], test[:, -1]
-        y_pred = predict(clf.tree, X_test)
+        y_hat = predict(clf.tree, X_test)
 
-        fold_acc[i] = np.mean(y_pred == y_test)
+        fold_acc[i] = np.mean(y_hat == y_test)
         y_true_all.append(y_test)
-        y_pred_all.append(y_pred)
+        y_pred_all.append(y_hat)
 
     y_true_all = np.concatenate(y_true_all)
     y_pred_all = np.concatenate(y_pred_all)
 
-    confusion = confusion_matrix(y_true_all, y_pred_all, class_labels=labels)
-    acc = float(np.trace(confusion) / confusion.sum())
-    p, macro_p = precision(y_true_all, y_pred_all, class_labels=labels)
-    r, macro_r = recall(y_true_all, y_pred_all, class_labels=labels)
-    f1, macro_f1 = f1_score(y_true_all, y_pred_all, class_labels=labels)
+    cm = confusion_matrix(y_true_all, y_pred_all, labels=labels)
+    acc = float(np.trace(cm) / cm.sum())
+    prec, macro_prec = precision(y_true_all, y_pred_all, labels=labels)
+    rec, macro_rec = recall(y_true_all, y_pred_all, labels=labels)
+    f1, macro_f1 = f1_score(y_true_all, y_pred_all, labels=labels)
 
     return {
-        "labels": labels, "confusion_matrix": confusion, "accuracy": acc,
-        "precision": p, "recall": r, "f1": f1,
-        "macro_precision": macro_p, "macro_recall": macro_r, "macro_f1": macro_f1,
+        "labels": labels,
+        "confusion_matrix": cm,
+        "accuracy": acc,
+        "precision": prec,
+        "recall": rec,
+        "f1": f1,
+        "macro_precision": macro_prec,
+        "macro_recall": macro_rec,
+        "macro_f1": macro_f1,
         "fold_accuracies": fold_acc,
     }

@@ -1,51 +1,40 @@
 import numpy as np
 from node import Node, Leaf
 
-clean = np.loadtxt("wifi_db/clean_dataset.txt")
-noisy = np.loadtxt("wifi_db/noisy_dataset.txt")
-
-class Decision_Tree_Classifier:
-
+class DecisionTreeClassifier:
     def __init__(self):
         self.tree = None
+        self.depth = 0
 
     def fit(self, data):
+        # fits the tree from full (X|y) data and records depth
         self.tree, self.depth = self.decision_tree_learning(data, 0)
 
-    def predict(self, data):
-        return np.array([self.predict_one(x) for x in data])
-
-    def predict_one(self, x):
-        tree = self.tree
-        while isinstance(tree, Node):
-            tree = tree.right if x[tree.attr] > tree.val else tree.left
-        return tree.label
-
     def decision_tree_learning(self, data, depth):
-        if len(np.unique(data[:,-1])) == 1:
-            return (Leaf(data[:,-1][0]), depth)
-        
-        attr, val, l_data, r_data = self.find_split(data)
-        l_branch, l_depth = self.decision_tree_learning(l_data, depth+1)
-        r_branch, r_depth = self.decision_tree_learning(r_data, depth+1)
+        # recursively grows the tree and stops if all labels are identical
+        if len(np.unique(data[:, -1])) == 1:
+            return (Leaf(data[:, -1][0]), depth)
 
+        attr, val, l_data, r_data = self.find_split(data)
+        l_branch, l_depth = self.decision_tree_learning(l_data, depth + 1)
+        r_branch, r_depth = self.decision_tree_learning(r_data, depth + 1)
         return (Node(attr, val, l_branch, r_branch), max(l_depth, r_depth))
 
-    
-
     def find_split(self, data):
-        attr = None
-        val = None
-        l_data = None
-        r_data = None
-        min_rem = np.inf
+        # searches all attributes/thresholds, picks split with minimum remainder
+        best_attr = None
+        best_val = None
+        best_left = None
+        best_right = None
+        best_rem = np.inf
+
         for j in range(data.shape[1] - 1):
-            sorted_data = data[data[:,j].argsort()]
+            sorted_data = data[data[:, j].argsort()]
 
             i = 1
             while i < len(sorted_data):
-                old = sorted_data[i-1, j]
-                while i < len(sorted_data) and sorted_data[i, j] == old:
+                prev = sorted_data[i - 1, j]
+                while i < len(sorted_data) and sorted_data[i, j] == prev:
                     i += 1
                 if i == len(sorted_data):
                     break
@@ -54,30 +43,30 @@ class Decision_Tree_Classifier:
                 right = sorted_data[i:]
                 rem = self.calc_rem(left, right)
 
-                if rem < min_rem:
-                    attr = j
-                    val = (sorted_data[i - 1, j] + sorted_data[i, j]) / 2
-                    l_data = left
-                    r_data = right
-                    min_rem = rem
+                if rem < best_rem:
+                    best_attr = j
+                    best_val = (sorted_data[i - 1, j] + sorted_data[i, j]) / 2
+                    best_left = left
+                    best_right = right
+                    best_rem = rem
 
                 i += 1
 
-        return (attr, val, l_data, r_data)
-        
+        return (best_attr, best_val, best_left, best_right)
 
-    
     def calc_H(self, data):
-        labels = data[:,-1]
-        N = len(labels)
-        total = 0
-        uniques, counts = np.unique(labels, return_counts=True)
-        for l, n in zip(uniques, counts):
-            total += (n / N) * np.log2(n / N)
+        # entropy of labels in data
+        labels = data[:, -1]
+        n = len(labels)
+        total = 0.0
+        _, counts = np.unique(labels, return_counts=True)
+        for cnt in counts:
+            p = cnt / n
+            total += p * np.log2(p)
         return -total
-    
+
     def calc_rem(self, left, right):
+        # calculates weighted remainder of left/right partitions
         ln = len(left)
         rn = len(right)
-
         return (ln / (ln + rn)) * self.calc_H(left) + (rn / (ln + rn)) * self.calc_H(right)
