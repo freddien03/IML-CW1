@@ -8,7 +8,7 @@ If not present, place data files at:
 
 ## Run
 Run `python3 main.py`
-- Prints 10-fold metrics for clead and noisy data
+- Prints 10-fold metrics for clean and noisy data
 - Saves confusion matrices in simple text form at `clean_confusion_matrix.txt`, `noisy_confusion_matrix.txt`
 - Saves tree image for the clean model at `clean_tree.png`
 
